@@ -62,7 +62,17 @@ else # Terminal-Namen für die Fehlerausgabe bestimmen
 fi
 
 sudo pacman -S --noconfirm git ptyxis extension-manager base-devel
-sudo pacman -Rns --noconfirm gnome-contacts gnome-weather gnome-clocks gnome-maps htop gnome-music snapshot vim gnome-characters gnome-tour gnome-software gnome-text-editor gnome-calendar epiphany gnome-connections malcontent decibels gnome-font-viewer showtime loupe gnome-console
+
+log "Entferne optionale Pakete..."
+
+# pacman -Qq liefert nur die Pakete zurück, die auch wirklich installiert sind
+INSTALLED=$(pacman -Qq gnome-contacts gnome-weather gnome-clocks gnome-maps htop gnome-music snapshot vim gnome-characters gnome-tour gnome-software gnome-text-editor gnome-calendar epiphany gnome-connections malcontent decibels gnome-font-viewer showtime loupe gnome-console 2>/dev/null || true)
+
+if [ -n "$INSTALLED" ]; then
+    echo "$INSTALLED" | xargs sudo pacman -Rns --noconfirm
+fi
+
+#sudo pacman -Rns --noconfirm gnome-contacts gnome-weather gnome-clocks gnome-maps htop gnome-music snapshot vim gnome-characters gnome-tour gnome-software gnome-text-editor gnome-calendar epiphany gnome-connections malcontent decibels gnome-font-viewer showtime loupe gnome-console
 log "unerwünschte Apps deinstalliert"
 
 sudo pacman -Syu
