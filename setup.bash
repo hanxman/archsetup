@@ -10,6 +10,34 @@ log() {
     printf '[\033[1;36mArchSetup\033[0m] %s\n' "$*"
 }
 
+cleanup_clone() {
+    local repo_root
+    local repo_name
+    local repo_status
+
+    repo_root="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+    if [[ -z "$repo_root" || "$repo_root" != "$SCRIPT_DIR" || ! -e "$repo_root/.git" ]]; then
+        log "Clone-Bereinigung übersprungen"
+        return
+    fi
+
+    repo_name="${repo_root##*/}"
+    if [[ "${repo_name,,}" != "archsetup" ]]; then
+        log "Clone-Bereinigung übersprungen: Ordnername abweichend"
+        return
+    fi
+
+    repo_status="$(git -C "$repo_root" status --porcelain --untracked-files=all)"
+    if [[ -n "$repo_status" ]]; then
+        log "Clone-Bereinigung übersprungen: lokale Änderungen vorhanden"
+        return
+    fi
+
+    cd "$HOME"
+    rm -rf -- "$repo_root"
+    log "Geklonten Ordner entfernt"
+}
+
 set_gsetting_if_needed() {
     local schema="$1"
     local key="$2"
@@ -76,34 +104,13 @@ install_ext() {
     fi
 }
 
-IS_PTYXIS=false
-
-if [[ -n "${KITTY_PID:-}" || "${TERM:-}" == "xterm-kitty" ]]; then
-    IS_PTYXIS=false
-elif [[ -n "${PTYXIS_PROFILE:-}" || "${COLORTERM:-}" =~ ptyxis ]]; then
-    IS_PTYXIS=true
-else
-    PARENT_PROC="$(ps -p "$PPID" -o comm= 2>/dev/null || true)"
-    if [[ "$PARENT_PROC" == "ptyxis" || "$PARENT_PROC" == "org.gnome.Ptyxis" ]]; then
-        IS_PTYXIS=true
-    fi
+if ((EUID == 0)); then
+    log "Bitte ohne sudo starten; erhöhte Rechte werden bei Bedarf angefordert"
+    exit 1
 fi
 
-if [[ "$IS_PTYXIS" == true ]]; then
-    log "Ptyxis erkannt"
-else
-    CURRENT_TERM="${KITTY_PID:+kitty}"
-    CURRENT_TERM="${CURRENT_TERM:-${TERM_PROGRAM:-$(ps -p "$PPID" -o comm= 2>/dev/null || true)}}"
-    log "Abbruch: Ptyxis erforderlich (aktuell: '$CURRENT_TERM')"
-
-    if ! command -v ptyxis >/dev/null 2>&1; then
-        log "Installiere Ptyxis"
-        sudo pacman -S --needed --noconfirm ptyxis
-    else
-        log "Ptyxis ist installiert"
-    fi
-
-    log "Bitte in Ptyxis erneut starten"
+if ! command -v pacman >/dev/null 2>&1; then
+    log "Abbruch: pacman nicht gefunden; Arch Linux erforderlich"
     exit 1
 fi
 
@@ -219,3 +226,4 @@ else
 fi
 
 log "Setup abgeschlossen"
+cleanup_clone
