@@ -54,56 +54,6 @@ set_gsetting_if_needed() {
     log "$key gesetzt"
 }
 
-is_extension_installed() {
-    local uuid="$1"
-
-    [[ -f "$EXT_BASE/$uuid/metadata.json" ]] ||
-        gnome-extensions list 2>/dev/null | grep -Fxq -- "$uuid"
-}
-
-install_ext() {
-    local uuid="$1"
-    local target_dir="$EXT_BASE/$uuid"
-    local staging_dir="$TMP_DIR/extensions/$uuid"
-    local download_file="$TMP_DIR/$uuid.zip"
-    local api_file="$TMP_DIR/$uuid.json"
-    local shell_version
-    local download_path
-
-    if is_extension_installed "$uuid"; then
-        log "Extension vorhanden: $uuid"
-        return
-    fi
-
-    log "Installiere Extension: $uuid"
-    shell_version="$(gnome-shell --version | awk '{print $3}' | cut -d. -f1)"
-    curl -fsSL --get \
-        --data-urlencode "uuid=$uuid" \
-        --data-urlencode "shell_version=$shell_version" \
-        "https://extensions.gnome.org/extension-info/" \
-        -o "$api_file"
-    download_path="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("download_url") or "")' "$api_file")"
-    if [[ -z "$download_path" ]]; then
-        log "Keine kompatible Version: $uuid"
-        return 1
-    fi
-
-    mkdir -p "$staging_dir"
-    curl -fsSL "https://extensions.gnome.org$download_path" -o "$download_file"
-    unzip -q "$download_file" -d "$staging_dir"
-    if [[ ! -f "$staging_dir/metadata.json" ]]; then
-        log "Ungültiges Extension-Archiv: $uuid"
-        return 1
-    fi
-
-    mkdir -p "$EXT_BASE"
-    if [[ -d "$target_dir" ]]; then
-        cp -a "$staging_dir/." "$target_dir/"
-    else
-        mv "$staging_dir" "$target_dir"
-    fi
-}
-
 if ((EUID == 0)); then
     log "Bitte ohne sudo starten; erhöhte Rechte werden bei Bedarf angefordert"
     exit 1
@@ -114,7 +64,7 @@ if ! command -v pacman >/dev/null 2>&1; then
     exit 1
 fi
 
-REQUIRED_PACKAGES=(git ptyxis extension-manager curl unzip python)
+REQUIRED_PACKAGES=(git ptyxis python fastfetch ttf-jetbrains-mono)
 MISSING_PACKAGES=()
 for package in "${REQUIRED_PACKAGES[@]}"; do
     if ! pacman -Q "$package" >/dev/null 2>&1; then
@@ -141,6 +91,8 @@ else
     log "Pakete bereits installiert"
 fi
 
+set_gsetting_if_needed org.gnome.desktop.interface monospace-font-name 'JetBrains Mono 11'
+
 if [[ -f "$SCRIPT_DIR/background" ]]; then
     BG_URI="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve().as_uri())' "$SCRIPT_DIR/background")"
     set_gsetting_if_needed org.gnome.desktop.background picture-uri-dark "$BG_URI"
@@ -149,41 +101,6 @@ else
     log "Hintergrundbild nicht gefunden"
 fi
 set_gsetting_if_needed org.gnome.desktop.interface color-scheme prefer-dark
-
-EXT_BASE="$HOME/.local/share/gnome-shell/extensions"
-mkdir -p "$EXT_BASE"
-for uuid in \
-    "dash-to-dock@micxgx.gmail.com" \
-    "hidetopbar@mathieu.bidon.ca" \
-    "app-hider@lynith.dev" \
-    "dhruva@narkagni"; do
-    if ! install_ext "$uuid"; then
-        log "Extension-Installation fehlgeschlagen: $uuid"
-        continue
-    fi
-
-    if gnome-extensions list --enabled 2>/dev/null | grep -Fxq -- "$uuid"; then
-        log "Extension aktiv: $uuid"
-    elif gnome-extensions enable "$uuid"; then
-        log "Extension aktiviert: $uuid"
-    else
-        log "Extension konnte nicht aktiviert werden: $uuid"
-    fi
-done
-
-CONFIG_FILE="$SCRIPT_DIR/gnome-extensions-config.ini"
-if [[ -f "$CONFIG_FILE" ]]; then
-    CURRENT_CONFIG="$(dconf dump /org/gnome/shell/extensions/)"
-    DESIRED_CONFIG="$(<"$CONFIG_FILE")"
-    if [[ "$CURRENT_CONFIG" == "$DESIRED_CONFIG" ]]; then
-        log "Dconf-Einstellungen bereits aktuell"
-    else
-        dconf load /org/gnome/shell/extensions/ < "$CONFIG_FILE"
-        log "Dconf-Einstellungen importiert"
-    fi
-else
-    log "Dconf-Konfiguration nicht gefunden"
-fi
 
 log "Prüfe optionale Pakete"
 OPTIONAL_PACKAGES=(gnome-contacts gnome-weather gnome-clocks gnome-maps htop gnome-music snapshot vim gnome-characters gnome-tour gnome-software gnome-text-editor gnome-calendar epiphany gnome-connections malcontent decibels gnome-font-viewer showtime loupe gnome-console)
